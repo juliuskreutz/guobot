@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS entries (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL
+);
