@@ -1,19 +1,9 @@
 use anyhow::Result;
 use serenity::{
-    async_trait,
-    model::{
-        application::interaction::Interaction,
-        gateway::Ready,
-        prelude::{
-            command::Command,
-            interaction::{
-                application_command::ApplicationCommandInteraction,
-                autocomplete::AutocompleteInteraction,
-            },
-            Activity, InteractionResponseType,
-        },
-    },
-    prelude::*,
+    all::{Command, CommandInteraction, Interaction, Ready},
+    builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
+    client::{Context, EventHandler},
+    gateway::ActivityData,
 };
 use sqlx::SqlitePool;
 
@@ -24,24 +14,23 @@ pub struct Handler {
 }
 
 impl Handler {
-    async fn application_command(
-        &self,
-        ctx: &Context,
-        command: &ApplicationCommandInteraction,
-    ) -> Result<()> {
+    async fn application_command(&self, ctx: &Context, command: &CommandInteraction) -> Result<()> {
         match command.data.name.as_str() {
             commands::add::NAME => commands::add::command(ctx, command, &self.pool).await,
             commands::delete::NAME => commands::delete::command(ctx, command, &self.pool).await,
             commands::guide::NAME => commands::guide::command(ctx, command, &self.pool).await,
+            commands::list::NAME => commands::list::command(ctx, command, &self.pool).await,
+            commands::add_message::NAME => {
+                commands::add_message::command(ctx, command, &self.pool).await
+            }
+            commands::delete_message::NAME => {
+                commands::delete_message::command(ctx, command, &self.pool).await
+            }
             _ => Ok(()),
         }
     }
 
-    async fn autocomplete(
-        &self,
-        ctx: &Context,
-        autocomplete: &AutocompleteInteraction,
-    ) -> Result<()> {
+    async fn autocomplete(&self, ctx: &Context, autocomplete: &CommandInteraction) -> Result<()> {
         match autocomplete.data.name.as_str() {
             commands::delete::NAME => {
                 commands::delete::autocomplete(ctx, autocomplete, &self.pool).await
@@ -49,36 +38,50 @@ impl Handler {
             commands::guide::NAME => {
                 commands::guide::autocomplete(ctx, autocomplete, &self.pool).await
             }
+            commands::add_message::NAME => {
+                commands::add_message::autocomplete(ctx, autocomplete, &self.pool).await
+            }
+            commands::delete_message::NAME => {
+                commands::delete_message::autocomplete(ctx, autocomplete, &self.pool).await
+            }
             _ => Ok(()),
         }
     }
 }
 
-#[async_trait]
+#[serenity::async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, _: Ready) {
-        Command::set_global_application_commands(&ctx.http, |command| {
-            command
-                .create_application_command(|command| commands::add::register(command))
-                .create_application_command(|command| commands::delete::register(command))
-                .create_application_command(|command| commands::guide::register(command))
-        })
+        Command::set_global_commands(
+            &ctx,
+            vec![
+                commands::add::register(),
+                commands::delete::register(),
+                commands::guide::register(),
+                commands::list::register(),
+                commands::add_message::register(),
+                commands::delete_message::register(),
+            ],
+        )
         .await
         .unwrap();
 
-        ctx.set_activity(Activity::watching("@guobacertified"))
-            .await;
+        ctx.set_activity(Some(ActivityData::watching("@guobacertified")));
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
-            Interaction::ApplicationCommand(command) => {
+            Interaction::Command(command) => {
                 if let Err(e) = self.application_command(&ctx, &command).await {
                     command
-                        .create_interaction_response(&ctx, |r| {
-                            r.kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|d| d.content(e).ephemeral(true))
-                        })
+                        .create_response(
+                            &ctx,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content(e.to_string())
+                                    .ephemeral(true),
+                            ),
+                        )
                         .await
                         .unwrap();
                 }

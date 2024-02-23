@@ -2,7 +2,7 @@ use anyhow::Result;
 use serenity::{
     all::{CommandInteraction, CommandOptionType},
     builder::{
-        CreateCommand, CreateCommandOption, CreateInteractionResponse,
+        CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse,
         CreateInteractionResponseMessage,
     },
     client::Context,
@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 
 use crate::database;
 
-pub const NAME: &str = "add";
+pub const NAME: &str = "deletemessage";
 
 pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqlitePool) -> Result<()> {
     if !command
@@ -31,34 +31,9 @@ pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqliteP
         .and_then(|o| o.value.as_str())
         .unwrap();
 
-    let url = command
-        .data
-        .options
-        .iter()
-        .find(|o| o.name == "url")
-        .and_then(|o| o.value.as_str())
-        .unwrap();
-
-    let message = command
-        .data
-        .options
-        .iter()
-        .find(|o| o.name == "message")
-        .and_then(|o| o.value.as_str());
-
     let id = name.to_lowercase();
-    let name = name.to_string();
-    let url = url.to_string();
-    let message = message.map(|s| s.to_string());
 
-    let entry = database::DbEntry {
-        id,
-        name,
-        url,
-        message,
-    };
-
-    database::set_entry(&entry, pool).await?;
+    database::delete_entry_message_by_id(&id, pool).await?;
 
     command
         .create_response(
@@ -74,20 +49,47 @@ pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqliteP
     Ok(())
 }
 
+pub async fn autocomplete(
+    ctx: &Context,
+    autocomplete: &CommandInteraction,
+    pool: &SqlitePool,
+) -> Result<()> {
+    let id = autocomplete
+        .data
+        .options
+        .iter()
+        .find(|o| o.name == "name")
+        .and_then(|o| o.value.as_str())
+        .unwrap_or_default()
+        .to_lowercase();
+
+    let entries = database::get_entries(pool).await?;
+
+    let mut response = CreateAutocompleteResponse::new();
+
+    for entry in entries
+        .iter()
+        .filter(|e| id.is_empty() || e.id.contains(&id))
+        .take(25)
+    {
+        response = response.add_string_choice(&entry.name, &entry.id);
+    }
+
+    autocomplete
+        .create_response(&ctx, CreateInteractionResponse::Autocomplete(response))
+        .await?;
+
+    Ok(())
+}
+
 pub fn register() -> CreateCommand {
     CreateCommand::new(NAME)
-        .description("Add entry")
+        .description("Delete a message from an entry")
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "name", "Name").required(true),
+            CreateCommandOption::new(CommandOptionType::String, "name", "Name")
+                .required(true)
+                .set_autocomplete(true),
         )
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "url", "Url").required(true),
-        )
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::String,
-            "message",
-            "Message",
-        ))
         .dm_permission(false)
         .default_member_permissions(Permissions::ADMINISTRATOR)
 }

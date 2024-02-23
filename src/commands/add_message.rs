@@ -12,7 +12,7 @@ use sqlx::SqlitePool;
 
 use crate::database;
 
-pub const NAME: &str = "delete";
+pub const NAME: &str = "addmessage";
 
 pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqlitePool) -> Result<()> {
     if !command
@@ -31,7 +31,18 @@ pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqliteP
         .and_then(|o| o.value.as_str())
         .unwrap();
 
-    database::delete_entry_by_id(&name.to_lowercase(), pool).await?;
+    let message = command
+        .data
+        .options
+        .iter()
+        .find(|o| o.name == "message")
+        .and_then(|o| o.value.as_str())
+        .unwrap();
+
+    let id = name.to_lowercase();
+    let message = message.trim();
+
+    database::set_entry_message_by_id(&id, message, pool).await?;
 
     command
         .create_response(
@@ -82,11 +93,15 @@ pub async fn autocomplete(
 
 pub fn register() -> CreateCommand {
     CreateCommand::new(NAME)
-        .description("Delete entry")
+        .description("Add a message to an entry")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "name", "Name")
                 .required(true)
                 .set_autocomplete(true),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "message", "Message")
+                .required(true),
         )
         .dm_permission(false)
         .default_member_permissions(Permissions::ADMINISTRATOR)
