@@ -28,14 +28,19 @@ pub async fn command(ctx: &Context, command: &CommandInteraction, pool: &SqliteP
         ));
     };
 
-    let mut response = CreateInteractionResponseMessage::new().content(entry.url);
+    let mut embed = CreateEmbed::new().title(entry.name).image(entry.url);
 
     if let Some(message) = &entry.message {
-        response = response.embed(CreateEmbed::new().title("Message").description(message));
+        embed = embed.field("Message", message, false);
     }
 
     command
-        .create_response(&ctx, CreateInteractionResponse::Message(response))
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().embed(embed),
+            ),
+        )
         .await?;
 
     Ok(())
